@@ -1,0 +1,16 @@
+=========================================================================================
+====================================== 04/09/2026 =======================================
+=========================================================================================
+
+Hoje iremos continuar desenvolvendo à Prova de Conceito (PoC) da etapa de auditoria da base. Começaremos o desenvolvimento utilizando apenas 100 imagens de uma única classe do conjunto de treino (refente a pasta 'testing' no BD), a classe escolhida foi: meningioma. Essa metadologia foi proposta a fim de realizar a validação do funcionamento básico do pipeline antes de aplicar na base completa.
+
+1.2.1 - Localização das imagens
+Primeiramente, será criado o script:
+    poc_auditoria.py
+
+O primeiro objetivo do script será:
+    - acessar uma pasta de uma classe do conjunto de treino;
+    - identificar os arquivos de imagem existentes;
+    - selecionar apenas 100 imagens;
+    - exibir no terminal a quantidade de imagens encontradas;
+    - exibir alguns caminhos para conferir se a leitura da pasta está correta.

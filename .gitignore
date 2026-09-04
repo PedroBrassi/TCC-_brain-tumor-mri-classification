@@ -1,0 +1,29 @@
+# Ambiente virtual
+.venv/
+venv/
+env/
+
+# Dataset
+Brain Tumor MRI Dataset/
+dataset/
+datasets/
+data/
+
+# Cache Python
+__pycache__/
+*.py[cod]
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Arquivos temporários
+*.tmp
+*.temp
+*.log

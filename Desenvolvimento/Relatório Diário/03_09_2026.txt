@@ -1,0 +1,65 @@
+=========================================================================================
+====================================== 03/09/2026 =======================================
+=========================================================================================
+
+Hoje foi iniciado o desenvolvimento do projeto de TCC, onde será realizada a classificação de tumores cerebrais em imagens de ressonância magnética utilizando Transfer Learning. Além da classificação, serão comparados diferentes modelos considerando o desempenho, eficiência computacional e explicabilidade dos resultados. O desenvolvimento foi dividido em etapas para facilitar a organização e permitir acompanhar o que está sendo feito durante o projeto.
+
+----------------------------------- 1ª ETAPA --------------------------------------------
+
+A primeira etapa será focada na auditoria e deduplicação da base de dados. Antes de começar a trabalhar diretamente com todas as imagens, será preparado o ambiente e feita uma pequena prova de conceito (PoC) para verificar se o pipeline pensado funciona corretamente.
+
+1.1 - Configuração do ambiente de desenvolvimento
+Foi escolhido o Visual Studio Code (VS Code) para o desenvolvimento do projeto utilizando Python.
+Inicialmente serão utilizadas as seguintes bibliotecas:
+	- Pillow: leitura e manipulação das imagens;
+	- ImageHash: cálculo dos hashes perceptuais (pHash e dHash);
+	- pandas: organização dos dados e criação do manifesto;
+	- NetworkX: criação dos grafos e identificação dos grupos de imagens duplicadas;
+	- Matplotlib: visualização das imagens e dos resultados;
+	- SciPy: cálculo das distâncias entre os hashes perceptuais.
+
+1.1.1 - Criação do ambiente virtual
+Foi criado um ambiente virtual Python (.venv) na pasta Desenvolvimento para manter as bibliotecas utilizadas no TCC separadas das demais instalações do computador. Comando utilizado:
+	python -m venv .venv
+Depois disso, o ambiente foi ativado normalmente. Comando:
+	.\.venv\Scripts\Activate.ps1
+Resultado: Ambiente virtual criado e ativado corretamente.
+
+1.1.2 - Instalação das dependências
+Com o ambiente virtual ativo, foram instaladas as bibliotecas que serão utilizadas inicialmente no projeto. Comando:
+	python -m pip install pillow imagehash pandas networkx matplotlib scipy
+Resultado: Todas as bibliotecas e suas dependências foram instaladas corretamente.
+Também foi criado o arquivo requirements.txt para registrar as versões das bibliotecas instaladas e permitir recriar o mesmo ambiente futuramente. Comando:
+	python -m pip freeze > requirements.txt
+
+Status: CONCLUÍDO
+*****************************************************************************************
+[X] Criar ambiente virtual Python e instalar pillow, imagehash, pandas, networkx, matplotlib.
+*****************************************************************************************
+
+
+=========================================================================================
+=========================================================================================
+
+1.2 - Prova de Conceito (PoC)
+Antes de executar a auditoria em toda a base (~7.200 imagens), será feita uma prova de conceito utilizando apenas 100 imagens de uma única classe. A ideia é desenvolver o pipeline aos poucos e verificar se cada parte está funcionando antes de aplicar na base inteira.
+A PoC deverá testar:
+	1. Localização e leitura das 100 imagens;
+	2. Verificação da integridade das imagens;
+	3. Extração dos metadados;
+	4. Cálculo do SHA-256;
+	5. Cálculo do pHash e dHash;
+	6. Organização das informações utilizando pandas;
+	7. Geração de um arquivo CSV com os resultados.
+
+Para isso foi criada a pasta:
+Desenvolvimento/
+└── Etapa 1 - Auditoria/
+    └── _PoC/
+
+Dentro dela será desenvolvido o script:
+	poc_auditoria.py
+
+O primeiro objetivo será apenas conseguir localizar 100 imagens de uma classe do conjunto de treino. Depois que isso estiver funcionando, serão adicionadas as outras funcionalidades aos poucos.
+
+Status: EM DESENVOLVIMENTO
