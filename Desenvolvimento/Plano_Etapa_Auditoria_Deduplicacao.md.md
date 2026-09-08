@@ -1,8 +1,16 @@
-# Etapa 1 — Auditoria e Deduplicação da Base
+# Plano - Auditoria e Deduplicação da Base
 
-Diário de bordo / plano de desenvolvimento. Versão revisada em 04/09/2026 (correções em relação à primeira versão: split `val` removido da auditoria, BK-Tree retirado do escopo, checkpoint ajustado ao tamanho real da base, e regra de rótulos conflitantes trocada de "reclassificar" para "documentar e excluir").
+Diário de bordo / plano de desenvolvimento. Organização revisada conforme as Etapas 0 a 3. Regras técnicas da versão de 04/09/2026 preservadas (correções em relação à primeira versão: split `val` removido da auditoria, BK-Tree retirado do escopo, checkpoint ajustado ao tamanho real da base, e regra de rótulos conflitantes trocada de "reclassificar" para "documentar e excluir").
 
-## Parte 1: Auditoria Extensiva e Geração do Manifesto
+## Etapa 0 - Ambiente e PoC
+
+**Ambiente Python: concluído.** Ambiente virtual criado e bibliotecas `pillow`, `imagehash`, `pandas`, `networkx` e `matplotlib` instaladas. O uso de `pyarrow` é opcional, apenas se for usar Parquet.
+
+**Prova de Conceito (PoC): pendente.** Antes de executar a auditoria na base completa, desenvolver o script `poc_auditoria.py` com 100 imagens de uma única classe do conjunto de treino, validando a leitura e integridade das imagens, a extração de metadados, o cálculo de SHA-256, pHash e dHash, a organização dos dados com pandas e o salvamento do arquivo de saída.
+
+## Etapa 1 - Auditoria da Base
+
+### Auditoria extensiva e geração do manifesto
 
 **Objetivo:** garantir a integridade física de cada arquivo, coletar metadados fundamentais e criar a fonte da verdade da base.
 
@@ -24,7 +32,9 @@ Diário de bordo / plano de desenvolvimento. Versão revisada em 04/09/2026 (cor
 - Ativar `ImageFile.LOAD_TRUNCATED_IMAGES = True` com aviso, para identificar imagens parcialmente corrompidas.
 - Checkpoint de progresso: **opcional** nessa base — o processamento completo das ~7.200 imagens leva ~1-2 minutos, então salvar a cada 5.000 imagens não cumpre função real (dispararia só uma vez, perto do fim). Se quiser essa proteção mesmo assim, use um intervalo bem menor (ex.: a cada 500).
 
-## Parte 2: Deduplicação e Análise de Vazamento de Dados
+## Etapa 2 - Deduplicacao e Sensibilidade
+
+### Deduplicação e análise de vazamento de dados
 
 **Deduplicação exata:**
 - Calcular o hash SHA-256 diretamente no buffer de bytes do arquivo de cada imagem no manifesto.
@@ -48,7 +58,9 @@ Diário de bordo / plano de desenvolvimento. Versão revisada em 04/09/2026 (cor
 - Usar busca em largura/profundidade (BFS/DFS) — por exemplo `networkx.connected_components` — para agrupar duplicatas em componentes conexos, não apenas pares isolados.
 - Exemplo: se A é quase igual a B, e B é quase igual a C, então A, B e C formam um único cluster de duplicatas.
 
-## Parte 3: Curadoria Visual e Protocolo de Exclusão
+## Etapa 3 - Curadoria Visual e Decisao
+
+### Curadoria visual e protocolo de exclusão
 
 **Módulo de inspeção visual:**
 - Visualizador (Matplotlib/Plotly) para renderizar todos os elementos de um cluster conexo lado a lado.
@@ -66,23 +78,23 @@ Diário de bordo / plano de desenvolvimento. Versão revisada em 04/09/2026 (cor
 
 ## Lista de Tarefas Ordenada (ToDo)
 
-### Etapa 0: Ambiente & Prova de Conceito (PoC)
+### Etapa 0 - Ambiente e PoC
 - [X] Criar ambiente virtual Python e instalar `pillow`, `imagehash`, `pandas`, `networkx`, `matplotlib` (`pyarrow` só se for usar Parquet — opcional para este tamanho de base).
-- [ ] Escrever script PoC em 100 imagens de uma única classe para validar extração de metadados, pHash e salvamento do arquivo de saída.
+- [ ] Escrever script PoC em 100 imagens de uma única classe do conjunto de treino para validar leitura e integridade das imagens, extração de metadados, SHA-256, pHash/dHash, organização com pandas e salvamento do arquivo de saída.
 
-### Etapa 1: Execução da Auditoria da Base Completa
+### Etapa 1 - Auditoria da Base
 - [ ] Rodar o script de auditoria no dataset completo (`train` e `test`).
 - [ ] Exportar o manifesto consolidado (`manifesto_base_dados.csv` ou `.parquet`).
 - [ ] Gerar relatório sumário de erros (imagens corrompidas, arquivos sem dimensão válida, modos de cor atípicos).
 
-### Etapa 2: Pipeline de Deduplicação e Análise de Sensibilidade
+### Etapa 2 - Deduplicacao e Sensibilidade
 - [ ] Calcular SHA-256 para todas as entradas do manifesto e agrupar duplicatas exatas.
 - [ ] Calcular `pHash` e `dHash` para todas as imagens válidas.
 - [ ] Rodar a matriz de sensibilidade com limiares T ∈ {0, 3, 5, 8, 10} e exportar os relatórios de Data Leakage e Label Mismatch.
 - [ ] Definir e documentar o critério de decisão para o T final.
 - [ ] Implementar o agrupamento por componentes conexos (`networkx.connected_components`) para consolidar clusters de duplicatas.
 
-### Etapa 3: Interface de Inspeção e Tomada de Decisão
+### Etapa 3 - Curadoria Visual e Decisao
 - [ ] Desenvolver notebook de inspeção visual focado em clusters com conflito de split (`train` x `test`) e de classe.
 - [ ] Gerar arquivo de log/decisão final (`exclusoes_e_ajustes.csv`) contendo os caminhos a remover/remanejar e o motivo de cada decisão.
 - [ ] Executar o expurgo definitivo e gerar o manifesto final higienizado.

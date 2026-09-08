@@ -1,0 +1,106 @@
+=========================================================================================
+====================================== 04/09/2026 ========================================
+=========================================================================================
+
+=========================================================================================
+====================================== 04/09/2026 ========================================
+=========================================================================================
+
+Iremos continuar o projeto de onde paramos, ou seja, desenvolver a PoC com 100 imagens de uma única classe do treino.
+
+Etapa 0 - Ambiente e PoC
+
+Inicialmente, foi criado o script poc_auditoria.py e definido o caminho da pasta meningioma, dentro de Training. Utilizamos a biblioteca pathlib para acessar a pasta e listar os arquivos.
+
+Foi aplicado um filtro para considerar apenas arquivos com as extensões .jpg, .jpeg e .png. Foram encontrados 1.400 arquivos de imagem nessa classe. Depois, os caminhos foram ordenados pelo nome e selecionamos os primeiros 100 para a PoC. Essa seleção não é aleatória; por enquanto, o objetivo é testar o funcionamento do código.
+
+Na sequência, começamos a leitura das imagens com Pillow. Ao executar o script, apareceu o erro “No module named 'PIL'”, indicando que a biblioteca não estava instalada no ambiente utilizado. Após instalar o Pillow no ambiente virtual, a leitura funcionou.
+
+Primeiro, testamos uma única imagem, que apresentou dimensões de 512 × 512 pixels e modo de cor RGB, com três canais. Também utilizamos image.load() para carregar os pixels, pois apenas abrir o arquivo não garante a leitura de todo o seu conteúdo.
+
+Depois, ampliamos o processamento para as 100 imagens e adicionamos try/except para tratar possíveis erros. Assim, se uma imagem falhar, o script registra o problema e continua com a próxima. Nessa execução, as 100 imagens foram lidas sem erros.
+
+Também começamos a organizar os resultados em uma lista chamada records. Cada imagem gera um dicionário com os seguintes campos:
+
+- file_path: caminho do arquivo;
+- dimensions: largura e altura em pixels;
+- color_mode: modo de cor;
+- is_valid: indica se o processamento foi concluído sem erro;
+- error_flag: mensagem do erro, quando houver;
+- class_label: classe obtida pelo nome da pasta;
+- file_extension: extensão do arquivo;
+- aspect_ratio: largura dividida pela altura;
+- channels: quantidade de canais;
+- split_assigned: conjunto de origem, definido como train nesta PoC;
+- file_size_bytes: tamanho do arquivo em bytes.
+
+Os registros de falha também foram preparados para entrar na lista, preservando as informações disponíveis e utilizando None nos metadados que não puderem ser obtidos.
+
+O tamanho do arquivo é consultado antes da leitura com Pillow. Dessa forma, se a imagem não abrir, ainda podemos guardar seu tamanho, desde que essa consulta tenha funcionado.
+
+Na conferência do primeiro registro, obtivemos uma imagem da classe meningioma, com extensão .jpg, dimensões de 512 × 512, modo RGB, razão de aspecto 1.0, três canais e tamanho de 17.624 bytes.
+
+Cálculo dos hashes
+
+O próximo passo foi calcular o SHA-256 utilizando hashlib. Primeiro, abrimos uma imagem em modo binário e calculamos a assinatura a partir dos bytes originais do arquivo. Depois que esse teste funcionou, integramos o cálculo ao laço das 100 imagens.
+
+O resultado foi armazenado no campo sha256_hash. Conferimos a quantidade de registros com assinatura e obtivemos 100/100. Como o cálculo ocorre antes da leitura com Pillow, o SHA-256 pode ser preservado mesmo quando o arquivo não é reconhecido como imagem.
+
+Depois, utilizamos ImageHash para calcular pHash e dHash. Testamos os dois em uma imagem e, em seguida, adicionamos os cálculos ao processamento das 100 imagens. Os resultados foram convertidos para texto e armazenados nos campos phash e dhash.
+
+Com esses três novos campos, cada registro passou a ter 14 campos. Nesta PoC, apenas calculamos e armazenamos os hashes; ainda não fizemos comparações para detectar duplicatas.
+
+Organização e exportação do manifesto
+
+Utilizamos pandas para transformar a lista records em uma tabela, com uma linha por imagem. Na primeira tentativa, apareceu o erro “No module named 'pandas'”. Instalamos a biblioteca no ambiente virtual utilizado pelo script e executamos novamente.
+
+A tabela foi criada com 100 linhas e 14 colunas. Conferimos o campo is_valid e os valores ausentes nas colunas de hashes. O resultado mostrou 100 registros válidos e nenhum SHA-256, pHash ou dHash ausente.
+
+Depois, criamos a pasta resultados ao lado do script e exportamos o arquivo manifesto_poc.csv. O caminho de saída foi definido com base na localização do próprio script, para não depender da pasta em que o terminal está aberto.
+
+O CSV foi salvo sem a coluna de índice do pandas e com codificação utf-8-sig. Também removemos uma chamada duplicada de exportação que estava salvando o mesmo arquivo duas vezes.
+
+Para conferir a exportação, reabrimos o CSV com pandas, definindo os hashes como texto para preservar possíveis zeros à esquerda. A tabela reaberta manteve as 100 linhas e 14 colunas, sem hashes ausentes. Também comparamos os hashes antes e depois da exportação, e o resultado foi “Hashes preservados: True”.
+
+Teste do tratamento de erros
+
+Para testar uma falha de leitura sem alterar o dataset, criamos a pasta test_inputs ao lado do script. Dentro dela, colocamos uma cópia de uma imagem válida e um arquivo de texto chamado invalid_image.jpg, contendo apenas “isto nao e uma imagem”.
+
+Na primeira execução, apenas a imagem válida foi processada. Ao listar os nomes e extensões reais, descobrimos que o arquivo inválido estava salvo como invalid_image.jpg.txt. Como a extensão era .txt, ele foi ignorado corretamente pelo filtro.
+
+Após remover o .txt final, o arquivo passou pelo filtro de extensão, mas foi rejeitado pelo Pillow. O script registrou a mensagem de erro e continuou o processamento normalmente.
+
+O teste gerou:
+
+- Um registro válido e um inválido;
+- SHA-256 presente nos dois registros, pois os dois arquivos puderam ser lidos em modo binário;
+- pHash e dHash ausentes no registro inválido;
+- Um CSV separado, chamado manifesto_test_errors.csv, com duas linhas e 14 colunas;
+- Confirmação de que os hashes foram preservados na exportação e reabertura.
+
+Esse teste confirmou o tratamento de um arquivo com extensão de imagem, mas conteúdo inválido. Outros tipos de falha, como imagens parcialmente truncadas, não foram testados nesta execução.
+
+Conferência final da PoC
+
+Depois do teste, restauramos a entrada para a pasta Training/meningioma e o arquivo de saída para manifesto_poc.csv. Removemos os trechos temporários usados para listar o conteúdo da pasta de teste e executamos novamente nas 100 imagens.
+
+O resultado final foi:
+
+- 100 registros com is_valid=True;
+- CSV reaberto com 100 linhas e 14 colunas;
+- Nenhum valor ausente em sha256_hash, phash ou dhash;
+- “Hashes preservados: True”.
+
+O manifesto foi salvo em:
+
+Desenvolvimento/Etapa 0 - Ambiente e Poc/_PoC/resultados/manifesto_poc.csv
+
+Próximos passos
+
+Iniciar a Etapa 1 - Auditoria da Base, criando o script auditoria.py e ampliando a leitura para todas as classes de Training e Testing.
+
+Primeiro, vamos conferir a estrutura das pastas. Depois, adaptar o código para identificar automaticamente o split e a classe de cada imagem, processar a base completa e gerar o manifesto consolidado e o relatório de erros.
+
+A auditoria continuará trabalhando apenas com train e test. O conjunto val não será criado nesta etapa.
+
+Status: CONCLUÍDO — PoC executada nas 100 imagens, com coleta de metadados, cálculo dos três hashes, exportação e conferência do CSV. O tratamento de arquivo não reconhecido como imagem também foi testado. A auditoria da base completa ainda não foi iniciada.
