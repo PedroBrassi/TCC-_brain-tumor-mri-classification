@@ -83,9 +83,9 @@ Diário de bordo / plano de desenvolvimento. Organização revisada conforme as 
 - [X] Escrever script PoC em 100 imagens de uma única classe do conjunto de treino para validar leitura e integridade das imagens, extração de metadados, SHA-256, pHash/dHash, organização com pandas e salvamento do arquivo de saída.
 
 ### Etapa 1 - Auditoria da Base
-- [ ] Rodar o script de auditoria no dataset completo (`train` e `test`).
-- [ ] Exportar o manifesto consolidado (`manifesto_base_dados.csv` ou `.parquet`).
-- [ ] Gerar relatório sumário de erros (imagens corrompidas, arquivos sem dimensão válida, modos de cor atípicos).
+- [X] Rodar o script de auditoria no dataset completo (`train` e `test`).
+- [X] Exportar o manifesto consolidado (`manifesto_base_dados.csv` ou `.parquet`).
+- [X] Gerar relatório sumário de erros (imagens corrompidas, arquivos sem dimensão válida, modos de cor atípicos).
 
 ### Etapa 2 - Deduplicacao e Sensibilidade
 - [ ] Calcular SHA-256 para todas as entradas do manifesto e agrupar duplicatas exatas.

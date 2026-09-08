@@ -9,6 +9,7 @@ Nesta etapa, são utilizados apenas os splits train e test.
 """
 
 import hashlib
+from time import perf_counter
 from pathlib import Path
 
 import imagehash
@@ -51,7 +52,7 @@ def collect_image_entries(dataset_dir: Path) -> list[dict]:
                 f"Pasta do conjunto não encontrada: {split_dir}"
             )
 
-        print(f"\nConjunto: {split_name}")
+
 
         for class_dir in sorted(split_dir.iterdir()):
             if not class_dir.is_dir():
@@ -65,10 +66,7 @@ def collect_image_entries(dataset_dir: Path) -> list[dict]:
                 and path.suffix.lower() in VALID_EXTENSIONS
             )
 
-            print(
-                f"  Classe: {class_dir.name} "
-                f"| Arquivos: {len(image_paths)}"
-            )
+
 
             for image_path in image_paths:
                 image_entries.append({
@@ -143,17 +141,34 @@ def build_record(
         record["is_valid"] = True
 
     except (UnidentifiedImageError, OSError) as error:
-        print(f"Erro ao processar a imagem {image_path}: {error}")
+        print(f"[ERRO] {record['relative_path']}: {error}")
         record["error_flag"] = str(error)
 
     return record
 
+def print_section(title: str) -> None:
+    """Separa os blocos de saída no terminal."""
+    print(f"\n{'=' * 72}\n{title}\n{'=' * 72}")
+
+
+def print_table(table: pd.DataFrame) -> None:
+    """Exibe a tabela sem índice nem informações internas do pandas."""
+    if table.empty:
+        print("Nenhum registro.")
+    else:
+        print(table.to_string(index=False))
+
+
 def run() -> None:
-    # Coleta os arquivos das classes de Training e Testing.
+    started_at = perf_counter()
+
+    print_section("ETAPA 1 - AUDITORIA DA BASE")
+    print(f"Dataset: {DATASET_DIR}")
+    print("Escopo: train e test | Metadados, SHA-256, pHash e dHash")
+
+    print_section("1. INVENTÁRIO DOS ARQUIVOS")
     image_entries = collect_image_entries(DATASET_DIR)
     total_entries = len(image_entries)
-
-    print(f"\nTotal de arquivos de imagem: {total_entries}")
 
     if not image_entries:
         raise ValueError(
@@ -161,8 +176,20 @@ def run() -> None:
             "nas pastas de classes."
         )
 
-    # Processa cada arquivo e preserva os registros de falha.
+    inventory = (
+        pd.DataFrame(image_entries)
+        .groupby(["split_assigned", "class_label"], sort=False)
+        .size()
+        .reset_index(name="Arquivos")
+        .rename(columns={"split_assigned": "Split", "class_label": "Classe"})
+    )
+    print_table(inventory)
+    print(f"\nTotal de arquivos selecionados: {total_entries}")
+
+    print_section("2. PROCESSAMENTO")
     records = []
+    invalid_count = 0
+    print(f"Iniciando processamento de {total_entries} arquivos...")
 
     for index, entry in enumerate(image_entries, start=1):
         record = build_record(
@@ -171,82 +198,76 @@ def run() -> None:
             class_label=entry["class_label"],
         )
         records.append(record)
+        invalid_count += int(not record["is_valid"])
 
-        # Apenas exibe o progresso; não salva um checkpoint.
+        # Acompanha o progresso sem imprimir uma linha para cada imagem.
+        # Isso não salva um checkpoint.
         if index % 500 == 0 or index == total_entries:
-            print(f"Processados: {index}/{total_entries}")
+            percentage = 100 * index / total_entries
+            print(
+                f"  {index:>5}/{total_entries} | {percentage:6.1f}% "
+                f"| Falhas: {invalid_count}"
+            )
 
-    valid_count = sum(record["is_valid"] for record in records)
-    invalid_count = len(records) - valid_count
-
-    print(f"\nRegistros gerados: {len(records)}")
-    print(f"Válidos: {valid_count}")
-    print(f"Inválidos: {invalid_count}")
-
-    # Exporta o manifesto completo e os registros com falha.
     df = pd.DataFrame(records)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
     manifest_path = OUTPUT_DIR / "manifesto_base_dados.csv"
     errors_path = OUTPUT_DIR / "relatorio_erros.csv"
 
+    print_section("3. EXPORTAÇÃO E CONFERÊNCIA DO MANIFESTO")
     df.to_csv(manifest_path, index=False, encoding="utf-8-sig")
-
     errors_df = df.loc[~df["is_valid"]]
     errors_df.to_csv(errors_path, index=False, encoding="utf-8-sig")
 
-    print(f"\nManifesto salvo em: {manifest_path}")
-    print(f"Relatório de erros salvo em: {errors_path}")
-    print(f"Registros no relatório de erros: {len(errors_df)}")
-
-    # Reabre o manifesto preservando os hashes como texto.
     hash_columns = ["sha256_hash", "phash", "dhash"]
-
     loaded_df = pd.read_csv(
         manifest_path,
         encoding="utf-8-sig",
         dtype={column: "string" for column in hash_columns},
     )
 
-    print(f"\nDimensões do manifesto reaberto: {loaded_df.shape}")
-
-    print("Hashes ausentes:")
-    print(loaded_df[hash_columns].isna().sum())
-
+    shape_preserved = loaded_df.shape == df.shape
     hashes_preserved = (
-        df[hash_columns]
-        .astype("string")
-        .equals(loaded_df[hash_columns])
+        df[hash_columns].astype("string").equals(loaded_df[hash_columns])
     )
+    print(
+        f"Manifesto reaberto: {loaded_df.shape[0]} linhas "
+        f"e {loaded_df.shape[1]} colunas"
+    )
+    print(f"Dimensões da tabela preservadas: {'SIM' if shape_preserved else 'NÃO'}")
+    print(f"Valores dos hashes preservados: {'SIM' if hashes_preserved else 'NÃO'}")
+    print("\nHashes ausentes após a reabertura:")
+    for column in hash_columns:
+        print(f"  {column:<12}: {loaded_df[column].isna().sum()}")
 
-    print(f"Hashes preservados: {hashes_preserved}")
-
-    if loaded_df.shape != df.shape or not hashes_preserved:
+    if not shape_preserved or not hashes_preserved:
         raise ValueError("Falha na conferência do manifesto exportado.")
 
-    # Confere a distribuição das imagens no arquivo exportado.
-    print("\nQuantidade por split e classe:")
-    print(
-        loaded_df.groupby(
-            ["split_assigned", "class_label"],
-            dropna=False,
-        ).size()
+    print_section("4. PERFIL DAS IMAGENS NO MANIFESTO")
+    print("Distribuição por split e classe:")
+    print_table(
+        loaded_df.groupby(["split_assigned", "class_label"], dropna=False)
+        .size()
+        .reset_index(name="Imagens")
+        .rename(columns={"split_assigned": "Split", "class_label": "Classe"})
     )
 
-    print("\nQuantidade por modo de cor e canais:")
-    print(
-        loaded_df.groupby(
-            ["color_mode", "channels"],
-            dropna=False,
-        ).size()
+    print("\nModos de cor e canais:")
+    print_table(
+        loaded_df.groupby(["color_mode", "channels"], dropna=False)
+        .size()
+        .reset_index(name="Imagens")
+        .rename(columns={"color_mode": "Modo", "channels": "Canais"})
     )
 
-    print("\nDimensões mais frequentes:")
-    print(
+    print("\nDez dimensões mais frequentes (pixels):")
+    print_table(
         loaded_df.groupby(["width", "height"], dropna=False)
         .size()
         .sort_values(ascending=False)
         .head(10)
+        .reset_index(name="Imagens")
+        .rename(columns={"width": "Largura", "height": "Altura"})
     )
 
     invalid_dimensions = (
@@ -254,69 +275,79 @@ def run() -> None:
         | (loaded_df["width"] <= 0)
         | (loaded_df["height"] <= 0)
     )
+    invalid_dimensions_count = int(invalid_dimensions.sum())
+    print(f"\nRegistros sem dimensões válidas: {invalid_dimensions_count}")
 
-    print(
-        "\nRegistros sem dimensões válidas:",
-        int(invalid_dimensions.sum()),
+    print("\nExtensão do arquivo e formato identificado:")
+    print_table(
+        loaded_df.groupby(["file_extension", "image_format"], dropna=False)
+        .size()
+        .reset_index(name="Arquivos")
+        .rename(columns={"file_extension": "Extensão", "image_format": "Formato"})
     )
 
-    # Separa os modos P e RGBA para inspeção posterior.
-    # Esse relatório não exclui nem converte os arquivos.
+    # Mantém os relatórios completos; limita apenas os detalhes no terminal.
     color_review_df = loaded_df.loc[
         loaded_df["color_mode"].isin(["P", "RGBA"])
     ].copy()
-
     color_review_path = OUTPUT_DIR / "revisao_modos_cor.csv"
-    color_review_df.to_csv(
-        color_review_path,
-        index=False,
-        encoding="utf-8-sig",
-    )
+    color_review_df.to_csv(color_review_path, index=False, encoding="utf-8-sig")
 
-    print("\nImagens com modo P ou RGBA:")
-    print(
-        color_review_df[
-            ["file_path", "split_assigned", "class_label", "color_mode"]
-        ].to_string(index=False)
-    )
-    print(f"\nRelatório salvo em: {color_review_path}")
-
-        # Compara a extensão com o formato identificado pelo Pillow.
-    expected_formats = {
-        ".jpg": "JPEG",
-        ".jpeg": "JPEG",
-        ".png": "PNG",
-    }
-
+    expected_formats = {".jpg": "JPEG", ".jpeg": "JPEG", ".png": "PNG"}
     expected_format = loaded_df["file_extension"].map(expected_formats)
-
     format_mismatch_df = loaded_df.loc[
         loaded_df["image_format"].notna()
         & loaded_df["image_format"].ne(expected_format)
     ].copy()
-
     format_report_path = OUTPUT_DIR / "divergencias_formato.csv"
-    format_mismatch_df.to_csv(
-        format_report_path,
-        index=False,
-        encoding="utf-8-sig",
-    )
+    format_mismatch_df.to_csv(format_report_path, index=False, encoding="utf-8-sig")
 
-    print("\nQuantidade por extensão e formato:")
-    print(
-        loaded_df.groupby(
-            ["file_extension", "image_format"],
-            dropna=False,
-        ).size()
-    )
+    print_section("5. OCORRÊNCIAS PARA REVISÃO")
+    print(f"Falhas de processamento: {len(errors_df)}")
+    print(f"Arquivos em modo P ou RGBA: {len(color_review_df)}")
+    print(f"Divergências entre extensão e formato: {len(format_mismatch_df)}")
+    print("As duas últimas categorias podem incluir os mesmos arquivos.")
 
-    print(
-        "\nArquivos com divergência entre extensão e formato:",
-        len(format_mismatch_df),
-    )
-    print(f"Relatório salvo em: {format_report_path}")
+    # Exibe uma única tabela para evitar repetir arquivos nas duas categorias.
+    review_df = loaded_df.loc[
+        loaded_df.index.isin(color_review_df.index)
+        | loaded_df.index.isin(format_mismatch_df.index)
+    ]
+    if not review_df.empty:
+        print("\nArquivos sinalizados (até 10; detalhes completos nos CSVs):")
+        print_table(
+            review_df[
+                ["relative_path", "color_mode", "file_extension", "image_format"]
+            ].head(10).rename(columns={
+                "relative_path": "Arquivo relativo ao dataset",
+                "color_mode": "Modo",
+                "file_extension": "Extensão",
+                "image_format": "Formato",
+            })
+        )
+    print("Sinalizações para revisão não são decisões de exclusão.")
 
-    print(df[["relative_path", "split_assigned", "class_label"]].head())
+    print_section("6. ARQUIVOS GERADOS")
+    print(f"Pasta: {OUTPUT_DIR}")
+    for path, count in [
+        (manifest_path, len(df)),
+        (errors_path, len(errors_df)),
+        (color_review_path, len(color_review_df)),
+        (format_report_path, len(format_mismatch_df)),
+    ]:
+        print(f"  {path.name:<30} | {count:>5} registros")
+    print("Relatórios com zero registros contêm apenas os cabeçalhos.")
+
+    print_section("RESUMO FINAL")
+    print(f"Arquivos processados: {len(records)}")
+    print(f"Processados sem falha: {len(records) - invalid_count}")
+    print(f"Falhas de processamento: {invalid_count}")
+    print(f"Registros sem dimensões válidas: {invalid_dimensions_count}")
+    print(f"Arquivos únicos sinalizados por modo ou formato: {len(review_df)}")
+    print("Conferência da exportação: APROVADA (dimensões da tabela e hashes)")
+    print(f"Tempo total: {perf_counter() - started_at:.1f} segundos")
+    print("Execução concluída. Os arquivos originais foram preservados.")
+
 
 if __name__ == "__main__":
     run()

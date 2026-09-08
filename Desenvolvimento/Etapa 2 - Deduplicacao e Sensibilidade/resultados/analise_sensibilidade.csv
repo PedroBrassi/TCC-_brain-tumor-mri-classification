@@ -1,0 +1,11 @@
+﻿hash_type,threshold,total_pairs,cross_split_pairs,different_class_pairs,different_class_pct
+pHash,0,1930,698,2,0.1
+pHash,3,3885,1380,11,0.28
+pHash,5,5893,2027,47,0.8
+pHash,8,14853,4740,1992,13.41
+pHash,10,31956,10024,9323,29.17
+dHash,0,2776,1031,6,0.22
+dHash,3,7947,2757,208,2.62
+dHash,5,17874,5688,2178,12.19
+dHash,8,93549,29954,28798,30.78
+dHash,10,257956,82519,104126,40.37

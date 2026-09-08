@@ -1,0 +1,112 @@
+Etapa 2 - Deduplicacao e Sensibilidade
+
+Hoje começamos a análise de duplicatas utilizando o manifesto gerado na auditoria. Os hashes já estavam calculados, então não foi necessário abrir novamente as 7.200 imagens para recalculá-los.
+
+Leitura do manifesto
+
+Carregamos o manifesto_base_dados.csv, preservando SHA-256, pHash e dHash como texto para evitar alterações nos valores, como a perda de zeros à esquerda.
+
+A leitura apresentou 7.200 registros e nenhum SHA-256 ausente.
+
+Deduplicação exata com SHA-256
+
+Primeiro, agrupamos os arquivos que possuem o mesmo SHA-256. Encontramos:
+
+- 153 grupos com hash repetido;
+- 340 arquivos envolvidos nesses grupos;
+- 187 cópias excedentes em relação a manter um arquivo por grupo.
+
+Essa quantidade de cópias excedentes é apenas uma contagem. Nenhum arquivo foi escolhido para exclusão ou removido.
+
+Depois, verificamos se os grupos atravessavam os conjuntos de treino e teste ou apresentavam classes diferentes. O resultado foi:
+
+- Nenhum grupo presente simultaneamente em train e test;
+- Nenhum grupo com classes diferentes.
+
+Portanto, todas as duplicatas exatas encontradas ficaram dentro de um único split e de uma única classe por grupo.
+
+Salvamos os resultados em:
+
+- duplicatas_exatas.csv: detalhamento dos 340 arquivos;
+- resumo_grupos_exatos.csv: resumo dos 153 grupos.
+
+Comparação perceptual com pHash e dHash
+
+Na sequência, começamos a comparação dos hashes perceptuais, que permite encontrar candidatos visualmente semelhantes mesmo quando os arquivos não possuem os mesmos bytes.
+
+Primeiro, comparamos duas imagens para conferir o funcionamento da distância de Hamming. O resultado foi 22 bits diferentes no pHash e 20 no dHash. Esse par ficou fora de todos os limiares planejados.
+
+Depois, transformamos os hashes em duas matrizes, uma para pHash e outra para dHash, cada uma com 7.200 linhas e 64 bits por imagem.
+
+Utilizamos pdist para comparar os pares sem repetição e sem comparar uma imagem com ela mesma. Como a métrica hamming retorna a proporção de bits diferentes, multiplicamos o resultado por 64 para trabalhar com a quantidade de bits.
+
+Foram comparados 25.916.400 pares por hash.
+
+Análise de sensibilidade
+
+Testamos os limiares T={0,3,5,8,10}, avaliando pHash e dHash separadamente. Para cada limiar, contamos os pares detectados, os pares entre train e test e os pares com classes diferentes.
+
+Resultados do pHash:
+
+| T | Pares detectados | Entre train/test | Classes diferentes | Classes diferentes (%) |
+|---|---:|---:|---:|---:|
+| 0 | 1.930 | 698 | 2 | 0,10% |
+| 3 | 3.885 | 1.380 | 11 | 0,28% |
+| 5 | 5.893 | 2.027 | 47 | 0,80% |
+| 8 | 14.853 | 4.740 | 1.992 | 13,41% |
+| 10 | 31.956 | 10.024 | 9.323 | 29,17% |
+
+Resultados do dHash:
+
+| T | Pares detectados | Entre train/test | Classes diferentes | Classes diferentes (%) |
+|---|---:|---:|---:|---:|
+| 0 | 2.776 | 1.031 | 6 | 0,22% |
+| 3 | 7.947 | 2.757 | 208 | 2,62% |
+| 5 | 17.874 | 5.688 | 2.178 | 12,19% |
+| 8 | 93.549 | 29.954 | 28.798 | 30,78% |
+| 10 | 257.956 | 82.519 | 104.126 | 40,37% |
+
+O dHash sinalizou mais pares em todos os limiares. Também observamos um crescimento forte dos pares entre classes diferentes nos limiares maiores.
+
+Esses percentuais não representam uma taxa comprovada de falsos positivos. Os casos podem envolver semelhança visual sem duplicação, limitações dos hashes ou problemas de rótulo, e precisam ser examinados.
+
+Mesmo em T=0, encontramos candidatos entre treino e teste. Isso não contradiz o resultado do SHA-256: arquivos diferentes podem produzir o mesmo hash perceptual.
+
+Os resultados foram organizados na tabela de sensibilidade, com exportação prevista no código para analise_sensibilidade.csv. O limiar final ainda não foi escolhido.
+
+Seleção dos pares para revisão
+
+Selecionamos os pares com distância zero em pelo menos um dos hashes perceptuais e que apresentavam diferença de split ou de classe.
+
+Cada par foi incluído uma única vez, mesmo quando pHash e dHash eram iguais simultaneamente. Guardamos os caminhos relativos, splits, classes e as duas distâncias.
+
+O resultado foi:
+
+- 1.236 pares únicos selecionados;
+- 1.233 pares entre treino e teste;
+- 6 pares com classes diferentes;
+- 3 pares com ambas as condições.
+
+As categorias se sobrepõem, então suas contagens não devem ser somadas como se fossem independentes.
+
+O relatório foi salvo como pares_t0_para_revisao.csv, na pasta resultados da Etapa 2.
+
+Esses números representam pares, não a quantidade de imagens únicas nem de grupos. Uma mesma imagem pode participar de vários pares.
+
+Ponto em que paramos
+
+O próximo passo será separar os seis pares com classes diferentes e conferir seus caminhos e distâncias. O trecho para gerar pares_t0_classes_diferentes.csv foi proposto, mas sua execução ainda não foi confirmada.
+
+Depois, vamos montar uma visualização lado a lado para inspecionar esses casos. Nenhuma inspeção visual foi concluída nesta sessão.
+
+Pendências
+
+- Separar e inspecionar os seis pares de T=0 com classes diferentes;
+- Examinar os candidatos entre treino e teste;
+- Documentar o critério de escolha do limiar final, distinguindo a análise exploratória já realizada de uma regra definida previamente;
+- Implementar o agrupamento em componentes conexos;
+- Registrar as decisões de curadoria seguindo o protocolo human-in-the-loop.
+
+Nenhuma imagem foi excluída, renomeada, convertida ou reclassificada. Nos casos de rótulos conflitantes confirmados, será mantida a regra de documentar e excluir por ambiguidade, sem atribuir um novo diagnóstico por conta própria.
+
+Status: EM DESENVOLVIMENTO — levantamento das duplicatas exatas e análise de sensibilidade realizados. Lista inicial de candidatos perceptuais exportada. Inspeção visual, escolha do limiar final, componentes conexos e decisões de curadoria ainda pendentes.
