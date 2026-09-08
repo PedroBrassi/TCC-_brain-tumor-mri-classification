@@ -109,6 +109,7 @@ def build_record(image_path: Path) -> dict:
         "channels": None,
         "phash": None,
         "dhash": None,
+        # is_valid indica sucesso do processamento, não ausência de duplicatas.
         "is_valid": False,
         "error_flag": None,
     }
@@ -155,6 +156,7 @@ def verify_round_trip(df: pd.DataFrame, csv_path: Path) -> bool:
 
 
 def run() -> None:
+    print("is_valid = sucesso de leitura/processamento; não avalia duplicação ou rótulo correto.")
     sample_paths = list_sample_images(CLASS_DIR, SAMPLE_SIZE)
 
     # Evita continuar com uma amostra menor que a planejada ou vazia.

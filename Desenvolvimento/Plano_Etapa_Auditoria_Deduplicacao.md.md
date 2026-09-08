@@ -6,7 +6,7 @@ Diário de bordo / plano de desenvolvimento. Organização revisada conforme as 
 
 **Ambiente Python: concluído.** Ambiente virtual criado e bibliotecas `pillow`, `imagehash`, `pandas`, `networkx` e `matplotlib` instaladas. O uso de `pyarrow` é opcional, apenas se for usar Parquet.
 
-**Prova de Conceito (PoC): pendente.** Antes de executar a auditoria na base completa, desenvolver o script `poc_auditoria.py` com 100 imagens de uma única classe do conjunto de treino, validando a leitura e integridade das imagens, a extração de metadados, o cálculo de SHA-256, pHash e dHash, a organização dos dados com pandas e o salvamento do arquivo de saída.
+**Prova de Conceito (PoC): concluída nas 100 imagens.** Foi desenvolvido o script `poc_auditoria.py` com 100 imagens de uma única classe do conjunto de treino, validando a leitura e integridade das imagens, a extração de metadados, o cálculo de SHA-256, pHash e dHash, a organização dos dados com pandas e o salvamento do arquivo de saída.
 
 ## Etapa 1 - Auditoria da Base
 
@@ -15,16 +15,16 @@ Diário de bordo / plano de desenvolvimento. Organização revisada conforme as 
 **Objetivo:** garantir a integridade física de cada arquivo, coletar metadados fundamentais e criar a fonte da verdade da base.
 
 **Metadados obrigatórios por imagem:**
-- `file_path`: caminho relativo e absoluto.
+- `file_path`: caminho absoluto; `relative_path`: caminho relativo ao dataset.
 - `split_assigned`: split de origem (`train`/`test`) — a base bruta não tem `val`; o split de validação só existe depois do resplit 70/15/15, que é uma etapa posterior, não da auditoria.
 - `class_label`: subpasta ou rótulo atribuído.
 - `file_size_bytes`: tamanho no disco em bytes.
-- `dimensions`: tupla `(width, height)`.
+- `width` e `height`: largura e altura em colunas separadas no CSV.
 - `aspect_ratio`: razão de aspecto `(width / height)`.
 - `color_mode`: modo de cor lido via Pillow (`RGB`, `L`, `RGBA`, `CMYK`).
 - `channels`: número de canais (ex.: 3 para RGB, 1 para escala de cinza).
 - `file_extension`: extensão do arquivo de origem (ex.: `.png`, `.jpg`).
-- `is_valid`: booleano indicando se o arquivo está saudável.
+- `is_valid`: booleano indicando sucesso do processamento implementado; não certifica ausência de duplicatas nem correção de rótulos.
 - `error_flag`: mensagem tratada de erro (ex.: "Truncated file", "Cannot identify image file").
 
 **Tratamento de exceções & tolerância a falhas:**
@@ -49,8 +49,8 @@ Diário de bordo / plano de desenvolvimento. Organização revisada conforme as 
 - Testar múltiplos limiares de distância de Hamming (T ∈ {0, 3, 5, 8, 10}).
 - Para cada limiar, tabular:
   - Total de pares detectados.
-  - *Data Leakage Pairs*: pares com uma imagem em `train` e outra em `test`.
-  - *Label Mismatch Pairs*: pares com aparência muito semelhante, mas rótulos de classe divergentes.
+  - *Data Leakage Pairs*: candidatos entre `train` e `test`; vazamento ainda não confirmado visualmente.
+  - *Label Mismatch Pairs*: pares sinalizados pelo hash com classes diferentes; semelhança e conflito precisam de inspeção.
 - **Critério de decisão para o T final** (faltava na primeira versão): definir a regra a priori, por exemplo — maior T tal que a taxa de pares "classes diferentes" não ultrapasse um limite aceitável, sinal de que o hash ainda não está capturando ruído/falso positivo. Documentar a justificativa escolhida na metodologia.
 
 **Agrupamento em componentes conexos:**
@@ -88,9 +88,9 @@ Diário de bordo / plano de desenvolvimento. Organização revisada conforme as 
 - [X] Gerar relatório sumário de erros (imagens corrompidas, arquivos sem dimensão válida, modos de cor atípicos).
 
 ### Etapa 2 - Deduplicacao e Sensibilidade
-- [ ] Calcular SHA-256 para todas as entradas do manifesto e agrupar duplicatas exatas.
-- [ ] Calcular `pHash` e `dHash` para todas as imagens válidas.
-- [ ] Rodar a matriz de sensibilidade com limiares T ∈ {0, 3, 5, 8, 10} e exportar os relatórios de Data Leakage e Label Mismatch.
+- [X] Calcular SHA-256 para todas as entradas do manifesto e agrupar duplicatas exatas.
+- [X] Calcular `pHash` e `dHash` para todas as imagens válidas.
+- [X] Rodar a matriz de sensibilidade com limiares T ∈ {0, 3, 5, 8, 10} e exportar os relatórios de Data Leakage e Label Mismatch.
 - [ ] Definir e documentar o critério de decisão para o T final.
 - [ ] Implementar o agrupamento por componentes conexos (`networkx.connected_components`) para consolidar clusters de duplicatas.
 
@@ -102,3 +102,17 @@ Diário de bordo / plano de desenvolvimento. Organização revisada conforme as 
 ---
 
 *Board Trello correspondente: [TCC - Classificação de Tumores Cerebrais](https://trello.com/b/OJmQifd0/tcc-classifica%C3%A7%C3%A3o-de-tumores-cerebrais)*
+
+## Como interpretar os resultados atuais
+
+- Grupo SHA-256: conjunto de arquivos com o mesmo hash exato. Não confundir com pares.
+- Par candidato: combinação de duas imagens sinalizada por hash perceptual.
+- Par sem repetição: A-B aparece uma vez, mesmo se pHash e dHash sinalizarem o par. Não significa imagem sem duplicação.
+- T=0: igualdade do hash perceptual, não confirmação de duplicação.
+- Os limiares são cumulativos; não somar suas contagens. Classes diferentes não equivalem a falsos positivos confirmados.
+- O relatório T=0 usa (pHash igual OU dHash igual) E (split diferente OU classe diferente).
+- O script calcula candidatos; inspeção humana, T final e componentes conexos continuam pendentes.
+
+Nota de implementação: o código atual usa a leitura estrita padrão do Pillow, sem ativar LOAD_TRUNCATED_IMAGES. A regra histórica acima não está implementada; ativar leitura tolerante não equivale a detectar corrupção. Esta revisão de clareza não alterou esse comportamento.
+
+A sensibilidade já foi explorada. Qualquer escolha futura de T deve documentar essa exploração; não deve ser descrita retroativamente como uma regra a priori.
