@@ -1,123 +1,187 @@
-from pathlib import Path
-from PIL import Image, UnidentifiedImageError
+"""
+PoC (Prova de Conceito) - Etapa 0.
+
+Valida, em 100 imagens de uma única classe, a extração de metadados,
+o cálculo de SHA-256 e dos hashes perceptuais pHash/dHash, além da
+exportação e reabertura do manifesto CSV.
+
+A comparação dos hashes para identificar duplicatas será feita depois.
+"""
+
 import hashlib
+from pathlib import Path
+
 import imagehash
 import pandas as pd
+from PIL import Image, UnidentifiedImageError
 
-# A PoC utiliza imagens de uma única classe do conjunto de treino.
-class_dir = Path(
-    r"C:\Users\pedro\Desktop\TCC 1\Brain Tumor MRI Dataset\Training\meningioma"
+
+# --- Configuração ------------------------------------------------------------
+
+VALID_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+SAMPLE_SIZE = 100
+HASH_COLUMNS = ["sha256_hash", "phash", "dhash"]
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+
+# Para a localização atual do script:
+# parents[0] = _PoC
+# parents[1] = Etapa 0 - Ambiente e Poc
+# parents[2] = Desenvolvimento
+# parents[3] = TCC 1
+# Ajuste se mover o script para outra profundidade.
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+CLASS_DIR = (
+    PROJECT_ROOT
+    / "Brain Tumor MRI Dataset"
+    / "Training"
+    / "meningioma"
 )
 
-valid_extensions = {".jpg", ".jpeg", ".png"}
-image_paths = []
+OUTPUT_DIR = SCRIPT_DIR / "resultados"
+OUTPUT_PATH = OUTPUT_DIR / "manifesto_poc.csv"
 
-# Usa a localização do script, independentemente da pasta do terminal.
-output_dir = Path(__file__).resolve().parent / "resultados"
-output_dir.mkdir(exist_ok=True)
 
-output_path = output_dir / "manifesto_poc.csv"
-# Filtra por extensão; a leitura com Pillow será verificada depois.
-for item in class_dir.iterdir():
-    if item.is_file() and item.suffix.lower() in valid_extensions:
-        image_paths.append(item)
+# --- Funções -----------------------------------------------------------------
 
-# Ordena pelos nomes para manter a seleção consistente entre execuções.
-# Esta seleção serve à PoC; não é uma amostra aleatória da base.
-image_paths = sorted(image_paths)
-sample_paths = image_paths[:100]
+def list_sample_images(class_dir: Path, sample_size: int) -> list[Path]:
+    """
+    Seleciona os primeiros arquivos de imagem, ordenados pelo nome.
 
-# Cada imagem terá um registro, inclusive quando houver falha na leitura.
-records = []
+    A seleção é reprodutível enquanto os arquivos da pasta permanecerem
+    os mesmos. Não é uma amostra aleatória.
+    """
+    if not class_dir.is_dir():
+        raise NotADirectoryError(
+            f"Pasta da classe não encontrada ou inválida: {class_dir}"
+        )
 
-for image_path in sample_paths:
-    file_size_bytes = None
-    sha256_hash = None
+    if sample_size <= 0:
+        raise ValueError("O tamanho da amostra deve ser maior que zero.")
+
+    images = [
+        item
+        for item in class_dir.iterdir()
+        if item.is_file() and item.suffix.lower() in VALID_EXTENSIONS
+    ]
+
+    return sorted(images)[:sample_size]
+
+
+def compute_sha256(path: Path) -> str:
+    """Calcula o SHA-256 dos bytes originais do arquivo."""
+    with path.open("rb") as image_file:
+        return hashlib.sha256(image_file.read()).hexdigest()
+
+
+def extract_image_metadata(image: Image.Image) -> dict:
+    """Extrai metadados e hashes perceptuais da imagem já carregada."""
+    return {
+        "width": image.width,
+        "height": image.height,
+        "color_mode": image.mode,
+        "aspect_ratio": image.width / image.height,
+        "channels": len(image.getbands()),
+        "phash": str(imagehash.phash(image)),
+        "dhash": str(imagehash.dhash(image)),
+    }
+
+
+def build_record(image_path: Path) -> dict:
+    """
+    Monta o registro da imagem.
+
+    Registra falhas capturadas como UnidentifiedImageError ou OSError,
+    preservando as informações obtidas antes da falha.
+    """
+    record = {
+        "file_path": str(image_path),
+        "class_label": image_path.parent.name,
+        "file_extension": image_path.suffix.lower(),
+        "split_assigned": "train",  # Fixo: esta PoC usa apenas Training.
+        "file_size_bytes": None,
+        "sha256_hash": None,
+        "width": None,
+        "height": None,
+        "color_mode": None,
+        "aspect_ratio": None,
+        "channels": None,
+        "phash": None,
+        "dhash": None,
+        "is_valid": False,
+        "error_flag": None,
+    }
+
     try:
-        file_size_bytes = image_path.stat().st_size
+        record["file_size_bytes"] = image_path.stat().st_size
+        record["sha256_hash"] = compute_sha256(image_path)
 
-        # Calcula o SHA-256 dos bytes originais do arquivo.
-        with image_path.open("rb") as image_file:
-            file_bytes = image_file.read()
-            sha256_hash = hashlib.sha256(file_bytes).hexdigest()
-
-        # O with fecha o arquivo automaticamente ao sair do bloco.
         with Image.open(image_path) as image:
-            # Carrega os pixels para detectar possíveis falhas de leitura.
+            # Força a leitura dos pixels e pode revelar falhas de decodificação.
             image.load()
-            # Calcula os hashes perceptuais e converte os resultados para texto.
-            phash_value = str(imagehash.phash(image))
-            dhash_value = str(imagehash.dhash(image))
+            record.update(extract_image_metadata(image))
 
-            record = {
-                "file_path": str(image_path),
-                "dimensions": image.size,  # (largura, altura), em pixels.
-                "color_mode": image.mode,
-                "is_valid": True,
-                "error_flag": None,
-                "class_label": image_path.parent.name,
-                "file_extension": image_path.suffix.lower(),
-                "aspect_ratio": image.width / image.height,
-                "channels": len(image.getbands()),
-                # Valor fixo porque esta PoC usa apenas Training.
-                "split_assigned": "train",
-                "file_size_bytes": file_size_bytes,
-                "sha256_hash": sha256_hash,
-                "phash": phash_value,
-                "dhash": dhash_value
-            }
-            records.append(record)
+        record["is_valid"] = True
 
     except (UnidentifiedImageError, OSError) as error:
-        # Registra a falha e permite continuar com a próxima imagem.
-        print(f"Erro ao ler a imagem {image_path.name}: {error}")
+        print(f"Erro ao processar a imagem {image_path.name}: {error}")
+        record["error_flag"] = str(error)
 
-        # Preserva os dados do caminho e marca como ausentes os metadados
-        # que não puderam ser obtidos com uma leitura bem-sucedida.
-        record = {
-            "file_path": str(image_path),
-            "dimensions": None,
-            "color_mode": None,
-            "is_valid": False,
-            "error_flag": str(error),
-            "class_label": image_path.parent.name,
-            "file_extension": image_path.suffix.lower(),
-            "aspect_ratio": None,
-            "channels": None,
-            "split_assigned": "train",
-            "file_size_bytes": file_size_bytes,
-            "sha256_hash": sha256_hash,
-            "phash": None,
-            "dhash": None,
-        }
-        records.append(record)
+    return record
 
-# Organiza os registros em uma tabela: uma linha por imagem.
-df = pd.DataFrame(records)
 
-# Conta quantas imagens foram processadas com sucesso ou com falha.
-print(df["is_valid"].value_counts())
+def verify_round_trip(df: pd.DataFrame, csv_path: Path) -> bool:
+    """Confere os hashes após salvar e reabrir o CSV."""
+    # A leitura como texto preserva possíveis zeros à esquerda.
+    reloaded = pd.read_csv(
+        csv_path,
+        encoding="utf-8-sig",
+        dtype={column: "string" for column in HASH_COLUMNS},
+    )
 
-df.to_csv(output_path, index=False, encoding="utf-8-sig")
-print(f"Manifesto salvo em: {output_path}")
+    print(f"Dimensões da tabela reaberta: {reloaded.shape}")
+    print("Hashes ausentes após reabrir o CSV:")
+    print(reloaded[HASH_COLUMNS].isna().sum())
 
-# Lê os hashes como texto para preservar possíveis zeros à esquerda.
-loaded_df = pd.read_csv(
-    output_path,
-    encoding="utf-8-sig",
-    dtype={
-        "sha256_hash": "string",
-        "phash": "string",
-        "dhash": "string",
-    },
-)
+    preserved = (
+        df[HASH_COLUMNS]
+        .astype("string")
+        .equals(reloaded[HASH_COLUMNS])
+    )
 
-print(f"Dimensões da tabela reaberta: {loaded_df.shape}")
+    print(f"Hashes preservados: {preserved}")
+    return preserved
 
-print(loaded_df[["sha256_hash", "phash", "dhash"]].isna().sum())
-hash_columns = ["sha256_hash", "phash", "dhash"]
 
-print(
-    "Hashes preservados:",
-    df[hash_columns].astype("string").equals(loaded_df[hash_columns]),
-)
+def run() -> None:
+    sample_paths = list_sample_images(CLASS_DIR, SAMPLE_SIZE)
+
+    # Evita continuar com uma amostra menor que a planejada ou vazia.
+    if len(sample_paths) != SAMPLE_SIZE:
+        raise ValueError(
+            f"Esperadas {SAMPLE_SIZE} imagens, "
+            f"mas foram selecionadas {len(sample_paths)} em {CLASS_DIR}."
+        )
+
+    records = [build_record(path) for path in sample_paths]
+    df = pd.DataFrame(records)
+
+    print(f"Quantidade de registros: {len(df)}")
+    print("Resultado do processamento:")
+    print(df["is_valid"].value_counts())
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Substitui o manifesto anterior de mesmo nome.
+    df.to_csv(OUTPUT_PATH, index=False, encoding="utf-8-sig")
+    print(f"Manifesto salvo em: {OUTPUT_PATH}")
+
+    if not verify_round_trip(df, OUTPUT_PATH):
+        raise ValueError(
+            "Os hashes do CSV não correspondem aos valores antes da exportação."
+        )
+
+
+if __name__ == "__main__":
+    run()

@@ -1,0 +1,155 @@
+=========================================================================================
+====================================== 04/09/2026 ========================================
+=========================================================================================
+
+Reorganização do código da PoC
+
+Depois da primeira versão funcionando, reorganizamos o código em funções para separar a seleção das imagens, o cálculo de SHA-256, a extração de metadados, a montagem dos registros e a conferência do CSV.
+
+Também substituímos o campo dimensions por width e height, deixando largura e altura em colunas separadas. Com isso, o manifesto da PoC passou de 14 para 15 colunas.
+
+Adicionamos uma verificação para impedir que a PoC continue com menos de 100 imagens e outra para interromper a execução caso os hashes não sejam preservados após a exportação.
+
+Os caminhos passaram a ser definidos a partir da localização do script. Isso funcionou mesmo depois de renomear a pasta principal do projeto para Projeto do TCC.
+
+Executamos novamente a versão reorganizada e obtivemos 100 registros válidos, 15 colunas, nenhum hash ausente e “Hashes preservados: True”.
+
+Status da Etapa 0: CONCLUÍDA — o fluxo da PoC foi validado nas 100 imagens, incluindo exportação, reabertura e o teste separado com um arquivo não reconhecido como imagem.
+
+Etapa 1 - Auditoria da Base
+
+Com a PoC funcionando, começamos o script auditoria.py dentro de Desenvolvimento/Etapa 1 - Auditoria da Base.
+
+Primeiro, conferimos a estrutura do dataset. Foram encontradas as pastas Training e Testing, ambas contendo as classes glioma, meningioma, notumor e pituitary.
+
+Criamos um mapeamento para registrar Training como train e Testing como test no manifesto. A auditoria trabalha apenas com esses dois conjuntos, sem criar val.
+
+Contagem e coleta dos arquivos
+
+Reutilizamos o filtro de extensões .jpg, .jpeg e .png para contar os arquivos de cada classe.
+
+Na primeira tentativa, a contagem mostrou apenas 400 arquivos da classe pituitary do teste. O problema estava na indentação: o bloco de contagem havia ficado fora do laço correspondente. Depois do ajuste, obtivemos:
+
+- Train: 1.400 arquivos por classe, totalizando 5.600;
+- Test: 400 arquivos por classe, totalizando 1.600;
+- Total da base: 7.200 arquivos.
+
+Depois, guardamos cada caminho junto com seu split e sua classe em uma lista chamada image_entries. Conferimos a primeira e a última entrada para verificar se a origem dos arquivos estava sendo registrada corretamente.
+
+Adaptação do processamento
+
+Copiamos as funções da PoC e adaptamos build_record() para receber o caminho, o split e a classe de cada imagem. O split deixou de ser fixo em train, permitindo registrar corretamente as imagens de Testing.
+
+Durante essa adaptação, corrigimos uma importação de Image que estava vindo de tkinter, quando deveria vir de PIL. Também adicionamos a importação de hashlib.
+
+Antes de executar na base completa, testamos uma imagem de test/pituitary. O registro apresentou o split e a classe corretos, metadados preenchidos, os três hashes e is_valid=True.
+
+Processamento da base completa
+
+Depois do teste individual, executamos o processamento nas 7.200 imagens. Adicionamos mensagens de progresso a cada 500 arquivos e ao final da execução. Essas mensagens servem apenas para acompanhamento, sem salvar checkpoints.
+
+O resultado foi:
+
+- 7.200 registros gerados;
+- 7.200 registros com is_valid=True;
+- Nenhuma falha capturada durante o processamento.
+
+Esse resultado indica que a leitura e os cálculos implementados foram concluídos sem erro. Ele não confirma a ausência de duplicatas, problemas de rótulo ou outros problemas que dependam de análise posterior.
+
+Exportação e conferência
+
+Organizamos os registros com pandas e geramos dois arquivos na pasta resultados:
+
+- manifesto_base_dados.csv: todos os registros da auditoria;
+- relatorio_erros.csv: apenas os registros com falha.
+
+Como nenhuma falha foi registrada, relatorio_erros.csv ficou apenas com os cabeçalhos.
+
+Reabrimos o manifesto com os hashes definidos como texto e conferimos a quantidade de linhas, as colunas e os valores de SHA-256, pHash e dHash. Também verificamos a distribuição por split e classe.
+
+Nessa versão, o manifesto apresentou 7.200 linhas e 15 colunas, nenhum hash ausente e “Hashes preservados: True”. As contagens permaneceram em 1.400 imagens por classe no treino e 400 por classe no teste.
+
+Análise dos modos de cor e das dimensões
+
+Além de verificar a leitura, examinamos os modos de cor e a quantidade de canais. Encontramos:
+
+- L: 3.067 imagens, com uma banda de escala de cinza;
+- RGB: 4.129 imagens, com três canais;
+- RGBA: 3 imagens, com quatro canais;
+- P: 1 imagem, com uma banda de índices de uma paleta.
+
+O modo P não significa necessariamente escala de cinza, pois seus valores apontam para uma paleta de cores.
+
+Também encontramos diferentes dimensões na base. A mais frequente foi 512 × 512, presente em 5.014 imagens. Outras dimensões comuns foram 225 × 225, com 338 imagens, e 630 × 630, com 90 imagens.
+
+Nenhum registro apresentou largura ou altura ausente, igual a zero ou negativa. As diferenças de dimensões e modos de cor foram documentadas, sem alterar ou excluir imagens.
+
+Investigação dos arquivos em P e RGBA
+
+Separamos os quatro arquivos em P ou RGBA no relatório revisao_modos_cor.csv. Todos estavam na classe notumor do treino:
+
+- Tr-no_1200.jpg: RGBA;
+- Tr-no_22.jpg: RGBA;
+- Tr-no_572.jpg: RGBA;
+- Tr-no_625.jpg: P.
+
+Como todos tinham extensão .jpg, verificamos o formato identificado pelo Pillow. Os quatro foram reconhecidos como PNG.
+
+Isso mostrou uma divergência entre o nome e o conteúdo dos arquivos. Eles puderam ser lidos normalmente, portanto essa divergência não foi tratada como motivo para exclusão.
+
+Conferência do formato na base inteira
+
+Adicionamos o campo image_format ao manifesto para verificar se havia outros casos além dos quatro já encontrados.
+
+A análise das 7.200 imagens mostrou:
+
+- 7.196 arquivos com extensão .jpg e formato JPEG;
+- 4 arquivos com extensão .jpg e formato PNG.
+
+As quatro divergências foram salvas em divergencias_formato.csv. Os arquivos originais foram mantidos, preservando os bytes e os hashes calculados.
+
+Inclusão do caminho relativo
+
+Por último, acrescentamos o campo relative_path, mantendo também o caminho absoluto em file_path.
+
+O caminho relativo usa a raiz do dataset como referência e ficou no formato:
+
+Training/glioma/Tr-gl_1.jpg
+
+Isso facilita localizar os arquivos caso o projeto seja movido para outra pasta ou computador.
+
+Com width e height separados, image_format e relative_path, o manifesto final passou a ter 17 colunas.
+
+Conferência final da auditoria
+
+A última execução apresentou:
+
+- 7.200 registros e 17 colunas;
+- 7.200 registros válidos segundo o processamento implementado;
+- Nenhuma falha de leitura capturada;
+- Nenhum registro sem dimensões válidas;
+- Nenhum SHA-256, pHash ou dHash ausente;
+- Hashes preservados após salvar e reabrir o CSV;
+- Distribuição por split e classe mantida;
+- Quatro divergências entre extensão e formato documentadas.
+
+Foram gerados os seguintes arquivos na pasta resultados da Etapa 1:
+
+- manifesto_base_dados.csv;
+- relatorio_erros.csv;
+- revisao_modos_cor.csv;
+- divergencias_formato.csv.
+
+Nenhuma imagem foi removida, renomeada ou convertida durante a auditoria.
+
+Próximos passos
+
+Começar a Etapa 2 - Deduplicacao e Sensibilidade utilizando o manifesto já exportado, sem recalcular os hashes.
+
+O primeiro passo será carregar o CSV no script deduplicacao_exata.py e agrupar arquivos com o mesmo SHA-256. Depois, verificar duplicatas dentro de cada split, entre train e test e entre classes diferentes.
+
+Na sequência, serão feitas as comparações perceptuais com pHash e dHash, a análise dos limiares T={0,3,5,8,10} e o agrupamento em componentes conexos.
+
+As decisões de exclusão ficarão para a curadoria visual, seguindo o protocolo human-in-the-loop. Nenhuma imagem será excluída automaticamente.
+
+Status da Etapa 1: processamento e conferências descritos acima concluídos, com manifesto e relatórios gerados. A execução da deduplicação da Etapa 2 ainda não foi confirmada.

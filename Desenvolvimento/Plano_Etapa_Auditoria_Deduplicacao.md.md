@@ -80,7 +80,7 @@ Diário de bordo / plano de desenvolvimento. Organização revisada conforme as 
 
 ### Etapa 0 - Ambiente e PoC
 - [X] Criar ambiente virtual Python e instalar `pillow`, `imagehash`, `pandas`, `networkx`, `matplotlib` (`pyarrow` só se for usar Parquet — opcional para este tamanho de base).
-- [ ] Escrever script PoC em 100 imagens de uma única classe do conjunto de treino para validar leitura e integridade das imagens, extração de metadados, SHA-256, pHash/dHash, organização com pandas e salvamento do arquivo de saída.
+- [X] Escrever script PoC em 100 imagens de uma única classe do conjunto de treino para validar leitura e integridade das imagens, extração de metadados, SHA-256, pHash/dHash, organização com pandas e salvamento do arquivo de saída.
 
 ### Etapa 1 - Auditoria da Base
 - [ ] Rodar o script de auditoria no dataset completo (`train` e `test`).
